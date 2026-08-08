@@ -63,9 +63,15 @@ async def unexpected_error_handler(_, exc: Exception) -> JSONResponse:
     return JSONResponse(status_code=500, content={"code": "internal_error", "message": "服务器内部错误。"})
 
 
-@app.get("/health", tags=["system"])
+@app.get(
+    "/health",
+    tags=["系统管理"],
+    summary="健康检查",
+    description="检查服务进程是否可响应。",
+    response_description="服务健康状态",
+)
 def health_check() -> dict[str, str]:
-    """Return a minimal process health indicator."""
+    """返回最小化的服务健康状态。"""
 
     return {"status": "ok"}
 

@@ -1,6 +1,6 @@
 # 智能工单协同系统
 
-单机运行的 FastAPI 工单系统，提供工单管理、状态流转、组合筛选、真实 DeepSeek AI 分诊、人工确认闭环和自动化测试。Swagger UI 是唯一演示界面，不包含独立前端。
+单机运行的 FastAPI 工单系统，提供工单管理、状态流转、组合筛选、真实 DeepSeek AI 分诊、人工确认闭环和自动化测试。Swagger UI 是唯一演示界面，不包含独立前端；业务分组、接口名称、字段选项和接口说明均已中文化。
 
 ## 技术栈
 
@@ -61,7 +61,7 @@ Invoke-RestMethod -Uri 'http://127.0.0.1:8000/tickets?limit=10'
 
 | 接口 | 用途 |
 |---|---|
-| `POST /tickets` | 创建工单 |
+| `POST /tickets` | 创建工单（仅提交标题、描述和提交人） |
 | `GET /tickets` | 按最终状态、分类、优先级、提交人组合筛选 |
 | `GET /tickets/{id}` | 查看 AI 建议、最终结果及审核状态 |
 | `PATCH /tickets/{id}` | 编辑标题、描述或提交人 |
@@ -70,11 +70,13 @@ Invoke-RestMethod -Uri 'http://127.0.0.1:8000/tickets?limit=10'
 | `POST /tickets/{id}/ai-review` | 人工确认、修改或拒绝 AI 建议 |
 | `GET /tickets/{id}/events` | 查看审计事件 |
 
-### Swagger 中的中文选项
+### Swagger 中的业务选项与审核动作
 
+- 业务分组：工单管理、AI 分诊、系统管理。
 - `final_status`：待处理、处理中、已解决、已关闭、已取消。
 - `final_category`：账号权限、软件故障、网络问题、办公硬件、其他；仅在 `POST /tickets/{id}/ai-review` 的 `MODIFY` 审核中填写或在 `CONFIRM` 后产生。
 - `final_priority`：P0、P1、P2、P3；仅在 `POST /tickets/{id}/ai-review` 的 `MODIFY` 审核中填写或在 `CONFIRM` 后产生。
+- 审核动作：`CONFIRM`（确认 AI 建议）、`MODIFY`（人工修改建议）、`REJECT`（拒绝 AI 建议）。
 
 ## AI 使用规则
 
@@ -95,11 +97,11 @@ pytest -q
 
 1. `POST /system/seed`，再用 `GET /tickets` 展示示例和组合筛选。
 2. `POST /tickets` 创建正常工单，调用 `PATCH /tickets/{id}/status` 完成 `待处理 → 处理中 → 已解决 → 已关闭`。
-3. 提交空标题或 `P9`，展示 `422` 参数校验。
+3. 创建时提交空标题，展示 `422` 参数校验；也可在待审核工单的 `MODIFY` 请求中提交非法优先级 `P9`，展示枚举校验。
 4. 连续两次创建相同标题和描述，展示 `409` 重复拦截。
 5. 使用配置了真实 Key 的工单调用 `POST /tickets/{id}/ai-analysis`，展示 `ai_*` 字段仍不改变 `final_*` 字段。
-6. 调用 `POST /tickets/{id}/ai-review`，分别展示 `CONFIRM`、`MODIFY` 或 `REJECT`。
-7. 创建以下对抗输入并调用 AI 分析；展示 `injection_detected=true`，且最终字段在人工审核前不变：
+6. 调用 `POST /tickets/{id}/ai-review`，分别展示 `CONFIRM`（确认）、`MODIFY`（人工修改）或 `REJECT`（拒绝）。
+7. 创建以下对抗输入并调用 AI 分析；展示 `ai_injection_detected=true`，且最终字段在人工审核前不变：
 
 ```text
 标题：打印机没墨了
