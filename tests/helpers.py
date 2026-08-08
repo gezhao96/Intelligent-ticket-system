@@ -33,7 +33,7 @@ def mock_deepseek_client(
 
 def ai_json(**overrides: object) -> str:
     payload: dict[str, object] = {
-        "category": "NETWORK",
+        "category": "网络问题",
         "priority": "P2",
         "summary": "内网连接异常",
         "reason": "描述表明客户端无法访问内网资源。",
@@ -41,4 +41,3 @@ def ai_json(**overrides: object) -> str:
     }
     payload.update(overrides)
     return json.dumps(payload, ensure_ascii=False)
-

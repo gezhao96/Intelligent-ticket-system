@@ -42,24 +42,45 @@ uvicorn app.main:app --reload
 
 ## 初始化和主要接口
 
-首次启动后，在 Swagger UI 调用 `POST /system/seed`，会幂等生成 5 条不同状态和类型的示例工单。
+首次启动后，在 Swagger UI 调用 `POST /system/seed`，会幂等生成下列 5 条不同状态、不同类型的示例工单。重复调用不会重复写入；首次调用返回 `{"created": 5, "existing": 0}`，之后调用返回 `{"created": 0, "existing": 5}`。
+
+| 标题 | 类型（`final_category`） | 优先级 | 状态（`final_status`） |
+|---|---|---|---|
+| 无法登录公司邮箱 | 账号权限 | P2 | 待处理 |
+| 财务软件启动闪退 | 软件故障 | P1 | 处理中 |
+| 研发网络间歇中断 | 网络问题 | P1 | 已解决 |
+| 三楼打印机缺墨 | 办公硬件 | P3 | 已关闭 |
+| 申请新增知识库标签 | 其他 | P3 | 已取消 |
+
+也可以不使用 Swagger，直接在 PowerShell 初始化并查看结果：
+
+```powershell
+Invoke-RestMethod -Method Post -Uri 'http://127.0.0.1:8000/system/seed'
+Invoke-RestMethod -Uri 'http://127.0.0.1:8000/tickets?limit=10'
+```
 
 | 接口 | 用途 |
 |---|---|
 | `POST /tickets` | 创建工单 |
 | `GET /tickets` | 按最终状态、分类、优先级、提交人组合筛选 |
 | `GET /tickets/{id}` | 查看 AI 建议、最终结果及审核状态 |
-| `PATCH /tickets/{id}` | 编辑标题、描述、提交人或人工最终分类/优先级 |
+| `PATCH /tickets/{id}` | 编辑标题、描述或提交人 |
 | `PATCH /tickets/{id}/status` | 执行合法状态流转 |
 | `POST /tickets/{id}/ai-analysis` | 调用真实 DeepSeek，仅保存 AI 建议 |
 | `POST /tickets/{id}/ai-review` | 人工确认、修改或拒绝 AI 建议 |
 | `GET /tickets/{id}/events` | 查看审计事件 |
 
+### Swagger 中的中文选项
+
+- `final_status`：待处理、处理中、已解决、已关闭、已取消。
+- `final_category`：账号权限、软件故障、网络问题、办公硬件、其他；仅在 `POST /tickets/{id}/ai-review` 的 `MODIFY` 审核中填写或在 `CONFIRM` 后产生。
+- `final_priority`：P0、P1、P2、P3；仅在 `POST /tickets/{id}/ai-review` 的 `MODIFY` 审核中填写或在 `CONFIRM` 后产生。
+
 ## AI 使用规则
 
 - AI 分析接口没有内置分类规则或伪造结果，必须调用真实 DeepSeek。
 - 模型成功时只写入 `ai_category`、`ai_priority`、`ai_summary`、`ai_reason` 等建议字段。
-- `final_category`、`final_priority` 只能由人工创建、确认或修改写入；`final_status` 只能由人工状态流转写入。
+- 创建工单时只提交标题、描述和提交人；`final_category`、`final_priority` 只能由人工确认或修改 AI 建议写入，`final_status` 只能由人工状态流转写入。
 - 未配置 Key、认证失败、超时、限流、网络异常或输出不合规时，接口返回 `503` 并记录失败原因；其余工单接口继续可用。
 
 ## 自动化测试
@@ -73,7 +94,7 @@ pytest -q
 ## Swagger 演示顺序
 
 1. `POST /system/seed`，再用 `GET /tickets` 展示示例和组合筛选。
-2. `POST /tickets` 创建正常工单，调用 `PATCH /tickets/{id}/status` 完成 `OPEN → IN_PROGRESS → RESOLVED → CLOSED`。
+2. `POST /tickets` 创建正常工单，调用 `PATCH /tickets/{id}/status` 完成 `待处理 → 处理中 → 已解决 → 已关闭`。
 3. 提交空标题或 `P9`，展示 `422` 参数校验。
 4. 连续两次创建相同标题和描述，展示 `409` 重复拦截。
 5. 使用配置了真实 Key 的工单调用 `POST /tickets/{id}/ai-analysis`，展示 `ai_*` 字段仍不改变 `final_*` 字段。

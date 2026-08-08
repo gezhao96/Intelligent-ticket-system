@@ -9,7 +9,7 @@ from app.core.config import settings
 
 
 class Base(DeclarativeBase):
-    """Base class for SQLAlchemy ORM models."""
+    """全部 SQLAlchemy ORM 模型共享的基类。"""
 
 
 engine = create_engine(
@@ -20,11 +20,10 @@ SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False, expi
 
 
 def get_session() -> Generator[Session, None, None]:
-    """Provide one database session per request and always close it."""
+    """为每个请求创建独立会话，并在请求结束后确保关闭。"""
 
     session = SessionLocal()
     try:
         yield session
     finally:
         session.close()
-

@@ -13,28 +13,32 @@ PersonName = Annotated[str, Field(min_length=1, max_length=64)]
 
 
 class TicketCreate(BaseModel):
+    """创建工单只接收原始问题信息，分诊结果必须经 AI 审核流程写入。"""
+    model_config = ConfigDict(extra="forbid")
+
     title: Title
     description: Description
     submitter: PersonName
-    final_category: Category | None = None
-    final_priority: Priority | None = None
     allow_duplicate: bool = False
 
 
 class TicketUpdate(BaseModel):
+    """仅允许更正基础信息；最终分诊结果与状态均使用独立流程更新。"""
+    model_config = ConfigDict(extra="forbid")
+
     title: Title | None = None
     description: Description | None = None
     submitter: PersonName | None = None
-    final_category: Category | None = None
-    final_priority: Priority | None = None
 
 
 class StatusTransitionRequest(BaseModel):
+    """人工发起的状态流转请求。"""
     final_status: FinalStatus
     actor: PersonName = "api_user"
 
 
 class TicketRead(BaseModel):
+    """对外返回工单当前快照，不暴露原始模型文本。"""
     model_config = ConfigDict(from_attributes=True)
 
     id: int
@@ -75,7 +79,7 @@ class TicketEventRead(BaseModel):
 
 
 class AiSuggestionOutput(BaseModel):
-    """Only accepted shape for a model response before persistence."""
+    """模型输出落库前必须通过的严格结构。"""
 
     model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
 
@@ -95,6 +99,7 @@ class AiReviewRequest(BaseModel):
 
     @model_validator(mode="after")
     def validate_action_fields(self) -> "AiReviewRequest":
+        # 不同审核动作要求不同的人工输入，提前阻止含糊请求。
         if self.action is ReviewAction.MODIFY:
             if self.final_category is None or self.final_priority is None:
                 raise ValueError("修改 AI 建议时必须同时提供最终分类和优先级。")

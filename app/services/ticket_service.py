@@ -15,6 +15,7 @@ from app.schemas import StatusTransitionRequest, TicketCreate, TicketUpdate
 
 
 ALLOWED_STATUS_TRANSITIONS: dict[FinalStatus, set[FinalStatus]] = {
+    # 显式白名单避免任意跳转破坏业务处理过程。
     FinalStatus.OPEN: {FinalStatus.IN_PROGRESS, FinalStatus.CANCELLED},
     FinalStatus.IN_PROGRESS: {FinalStatus.RESOLVED, FinalStatus.CANCELLED},
     FinalStatus.RESOLVED: {FinalStatus.CLOSED, FinalStatus.IN_PROGRESS},
@@ -24,15 +25,18 @@ ALLOWED_STATUS_TRANSITIONS: dict[FinalStatus, set[FinalStatus]] = {
 
 
 def normalize_content(value: str) -> str:
+    # 去除格式差异后再比较，避免仅靠空格或大小写绕过重复检测。
     return re.sub(r"\s+", " ", value.strip()).casefold()
 
 
 def build_content_hash(title: str, description: str) -> str:
+    # 标题与描述是“内容完全相同”的唯一判据，不把提交人纳入哈希。
     content = f"{normalize_content(title)}\n{normalize_content(description)}"
     return hashlib.sha256(content.encode("utf-8")).hexdigest()
 
 
 def add_event(session: Session, ticket: Ticket, event_type: str, actor: str, payload: dict[str, object]) -> None:
+    # 所有重要变更都追加事件，而非覆盖历史记录。
     session.add(
         TicketEvent(
             ticket=ticket,
@@ -44,6 +48,7 @@ def add_event(session: Session, ticket: Ticket, event_type: str, actor: str, pay
 
 
 def get_ticket_or_raise(session: Session, ticket_id: int) -> Ticket:
+    # 软删除工单对普通读取接口表现为不存在。
     ticket = session.scalar(select(Ticket).where(Ticket.id == ticket_id, Ticket.is_deleted.is_(False)))
     if ticket is None:
         raise NotFoundError(f"工单 {ticket_id} 不存在。")
@@ -59,6 +64,7 @@ def list_tickets(
     submitter: str | None = None,
     limit: int = 50,
 ) -> list[Ticket]:
+    """按最终有效字段组合筛选；AI 建议字段不参与业务查询。"""
     statement = select(Ticket).where(Ticket.is_deleted.is_(False))
     if final_status is not None:
         statement = statement.where(Ticket.final_status == final_status)
@@ -77,6 +83,7 @@ def list_tickets(
 
 
 def create_ticket(session: Session, payload: TicketCreate) -> Ticket:
+    """创建工单，并在同一事务中写入创建事件。"""
     content_hash = build_content_hash(payload.title, payload.description)
     duplicate = _find_recent_duplicate(session, content_hash)
     if duplicate is not None and not payload.allow_duplicate:
@@ -87,8 +94,6 @@ def create_ticket(session: Session, payload: TicketCreate) -> Ticket:
         description=payload.description.strip(),
         submitter=payload.submitter.strip(),
         content_hash=content_hash,
-        final_category=payload.final_category,
-        final_priority=payload.final_priority,
     )
     try:
         session.add(ticket)
@@ -131,6 +136,7 @@ def update_ticket(session: Session, ticket_id: int, payload: TicketUpdate) -> Ti
 
 
 def _find_recent_duplicate(session: Session, content_hash: str, exclude_ticket_id: int | None = None) -> Ticket | None:
+    # 默认只拦截 24 小时内的重复，避免长期历史工单阻止真实的新问题。
     cutoff = datetime.now(timezone.utc) - timedelta(hours=24)
     statement = select(Ticket).where(
         Ticket.content_hash == content_hash,
@@ -143,9 +149,10 @@ def _find_recent_duplicate(session: Session, content_hash: str, exclude_ticket_i
 
 
 def delete_ticket(session: Session, ticket_id: int) -> None:
+    """仅对未处理工单执行软删除，保留审计记录。"""
     ticket = get_ticket_or_raise(session, ticket_id)
     if ticket.final_status is not FinalStatus.OPEN:
-        raise ConflictError("仅 OPEN 状态的工单允许删除，其他工单请使用取消状态。")
+        raise ConflictError("仅待处理状态的工单允许删除，其他工单请使用取消状态。")
 
     try:
         ticket.is_deleted = True
@@ -159,6 +166,7 @@ def delete_ticket(session: Session, ticket_id: int) -> None:
 
 
 def transition_ticket(session: Session, ticket_id: int, payload: StatusTransitionRequest) -> Ticket:
+    """依据状态白名单完成人工流转，并记录变更前后状态。"""
     ticket = get_ticket_or_raise(session, ticket_id)
     old_status = ticket.final_status
     target_status = payload.final_status
@@ -188,6 +196,7 @@ def transition_ticket(session: Session, ticket_id: int, payload: StatusTransitio
 
 
 def list_ticket_events(session: Session, ticket_id: int) -> list[TicketEvent]:
+    """按时间正序返回工单历史，便于演示可追溯性。"""
     get_ticket_or_raise(session, ticket_id)
     try:
         statement = select(TicketEvent).where(TicketEvent.ticket_id == ticket_id).order_by(TicketEvent.created_at.asc())

@@ -10,18 +10,21 @@ from app.db import Base
 
 
 def utc_now() -> datetime:
+    # 所有业务时间统一使用 UTC，避免本机时区影响审计顺序。
     return datetime.now(timezone.utc)
 
 
 class Category(StrEnum):
-    ACCOUNT_ACCESS = "ACCOUNT_ACCESS"
-    SOFTWARE_INCIDENT = "SOFTWARE_INCIDENT"
-    NETWORK = "NETWORK"
-    HARDWARE_OFFICE = "HARDWARE_OFFICE"
-    OTHER = "OTHER"
+    # 枚举成员名保持稳定，API 与 Swagger 展示值使用中文。
+    ACCOUNT_ACCESS = "账号权限"
+    SOFTWARE_INCIDENT = "软件故障"
+    NETWORK = "网络问题"
+    HARDWARE_OFFICE = "办公硬件"
+    OTHER = "其他"
 
 
 class Priority(StrEnum):
+    # 优先级从紧急的 P0 到低影响的 P3。
     P0 = "P0"
     P1 = "P1"
     P2 = "P2"
@@ -29,20 +32,23 @@ class Priority(StrEnum):
 
 
 class FinalStatus(StrEnum):
-    OPEN = "OPEN"
-    IN_PROGRESS = "IN_PROGRESS"
-    RESOLVED = "RESOLVED"
-    CLOSED = "CLOSED"
-    CANCELLED = "CANCELLED"
+    # 最终业务状态由人工操作；API 与 Swagger 展示值使用中文。
+    OPEN = "待处理"
+    IN_PROGRESS = "处理中"
+    RESOLVED = "已解决"
+    CLOSED = "已关闭"
+    CANCELLED = "已取消"
 
 
 class AiStatus(StrEnum):
+    # 模型调用生命周期，与人工审核状态分开记录。
     NOT_REQUESTED = "NOT_REQUESTED"
     SUCCEEDED = "SUCCEEDED"
     FAILED = "FAILED"
 
 
 class ReviewStatus(StrEnum):
+    # AI 建议的人工审核状态。
     NOT_REVIEWED = "NOT_REVIEWED"
     PENDING = "PENDING"
     CONFIRMED = "CONFIRMED"
@@ -51,12 +57,14 @@ class ReviewStatus(StrEnum):
 
 
 class ReviewAction(StrEnum):
+    # 审核接口接收的三种动作。
     CONFIRM = "CONFIRM"
     MODIFY = "MODIFY"
     REJECT = "REJECT"
 
 
 class Ticket(Base):
+    """工单当前快照：保存基础信息、AI 建议和人工最终结果。"""
     __tablename__ = "tickets"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
@@ -66,7 +74,7 @@ class Ticket(Base):
     content_hash: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
     version: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
 
-    # AI proposal fields never represent effective ticket decisions.
+    # AI 仅能写入建议字段；这些值不会自动成为有效工单结果。
     ai_category: Mapped[Category | None] = mapped_column(
         Enum(Category, native_enum=False, validate_strings=True), nullable=True
     )
@@ -86,7 +94,7 @@ class Ticket(Base):
     ai_raw_response: Mapped[str | None] = mapped_column(Text, nullable=True)
     ai_error_code: Mapped[str | None] = mapped_column(String(64), nullable=True)
 
-    # Only human actions may change these effective fields.
+    # 最终分类与优先级只能由人工确认或修改 AI 建议写入；状态由人工流转。
     final_category: Mapped[Category | None] = mapped_column(
         Enum(Category, native_enum=False, validate_strings=True), nullable=True
     )
@@ -118,6 +126,7 @@ class Ticket(Base):
 
 
 class TicketEvent(Base):
+    """不可变的审计事件，用于还原一次工单的处理过程。"""
     __tablename__ = "ticket_events"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)

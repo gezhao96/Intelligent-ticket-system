@@ -6,8 +6,6 @@ def make_ticket(client, **overrides):
         "title": "VPN 无法连接",
         "description": "客户端提示认证失败，无法访问内网。",
         "submitter": "alice",
-        "final_category": "NETWORK",
-        "final_priority": "P2",
     }
     payload.update(overrides)
     response = client.post("/tickets", json=payload)
@@ -24,11 +22,11 @@ def test_seed_is_idempotent_and_exposes_multiple_statuses(client):
     assert second.json() == {"created": 0, "existing": 5}
     tickets = client.get("/tickets", params={"limit": 10}).json()
     assert {ticket["final_status"] for ticket in tickets} == {
-        "OPEN",
-        "IN_PROGRESS",
-        "RESOLVED",
-        "CLOSED",
-        "CANCELLED",
+        "待处理",
+        "处理中",
+        "已解决",
+        "已关闭",
+        "已取消",
     }
 
 
@@ -53,6 +51,19 @@ def test_validation_and_duplicate_protection(client):
     assert invalid.status_code == 422
     assert invalid.json()["code"] == "validation_error"
 
+    premature_triage = client.post(
+        "/tickets",
+        json={
+            "title": "不应在创建时分诊",
+            "description": "最终分类和优先级应在人工审核 AI 建议后写入。",
+            "submitter": "alice",
+            "final_category": "网络问题",
+            "final_priority": "P2",
+        },
+    )
+    assert premature_triage.status_code == 422
+    assert premature_triage.json()["code"] == "validation_error"
+
     first = make_ticket(client, title="打印机没有墨", description="三楼打印机需要补墨。")
     duplicate = client.post(
         "/tickets",
@@ -74,27 +85,22 @@ def test_validation_and_duplicate_protection(client):
 
 
 def test_combined_filters_and_status_machine(client):
-    first = make_ticket(client, title="网络故障 A", final_priority="P1")
-    make_ticket(
-        client,
-        title="软件故障 B",
-        description="桌面软件闪退。",
-        final_category="SOFTWARE_INCIDENT",
-        final_priority="P1",
-    )
+    first = make_ticket(client, title="网络故障 A")
+    seeded = client.post("/system/seed")
+    assert seeded.status_code == 200
 
     filtered = client.get(
         "/tickets",
-        params={"final_status": "OPEN", "final_category": "NETWORK", "final_priority": "P1", "submitter": "alice"},
+        params={"final_status": "已解决", "final_category": "网络问题", "final_priority": "P1", "submitter": "王强"},
     )
     assert filtered.status_code == 200
-    assert [item["id"] for item in filtered.json()] == [first["id"]]
+    assert len(filtered.json()) == 1
+    assert filtered.json()[0]["title"] == "研发网络间歇中断"
 
-    for target in ("IN_PROGRESS", "RESOLVED", "CLOSED"):
+    for target in ("处理中", "已解决", "已关闭"):
         response = client.patch(f"/tickets/{first['id']}/status", json={"final_status": target, "actor": "operator"})
         assert response.status_code == 200
         assert response.json()["final_status"] == target
 
-    invalid = client.patch(f"/tickets/{first['id']}/status", json={"final_status": "OPEN", "actor": "operator"})
+    invalid = client.patch(f"/tickets/{first['id']}/status", json={"final_status": "待处理", "actor": "operator"})
     assert invalid.status_code == 409
-
