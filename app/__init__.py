@@ -1,0 +1,2 @@
+"""Smart ticket collaboration system."""
+

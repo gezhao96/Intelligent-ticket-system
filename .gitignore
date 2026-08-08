@@ -1,0 +1,13 @@
+.env
+.venv/
+__pycache__/
+.pytest_cache/
+pytest-cache-files-*/
+*.py[cod]
+data/*.db
+data/*.db-shm
+data/*.db-wal
+data/test-runs/
+任务1-任务书-智能工单协同系统.pdf
+coverage.xml
+htmlcov/
