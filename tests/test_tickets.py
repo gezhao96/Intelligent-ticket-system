@@ -30,6 +30,15 @@ def test_seed_is_idempotent_and_exposes_multiple_statuses(client):
     }
 
 
+def test_ticket_list_declares_utf8_json_for_windows_powershell(client):
+    client.post("/system/seed")
+
+    response = client.get("/tickets", params={"limit": 1})
+
+    assert response.status_code == 200
+    assert response.headers["content-type"] == "application/json; charset=utf-8"
+
+
 def test_crud_soft_delete_and_history(client):
     ticket = make_ticket(client)
 

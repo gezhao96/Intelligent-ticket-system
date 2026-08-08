@@ -20,6 +20,10 @@ from app.errors import ApplicationError
 logger = logging.getLogger(__name__)
 
 
+class Utf8JSONResponse(JSONResponse):
+    media_type = "application/json; charset=utf-8"
+
+
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     Base.metadata.create_all(bind=engine)
@@ -31,17 +35,18 @@ app = FastAPI(
     version="0.1.0",
     description="单机运行的工单管理与 AI 辅助分诊服务。",
     lifespan=lifespan,
+    default_response_class=Utf8JSONResponse,
 )
 
 
 @app.exception_handler(ApplicationError)
 async def application_error_handler(_, exc: ApplicationError) -> JSONResponse:
-    return JSONResponse(status_code=exc.status_code, content={"code": exc.code, "message": exc.message})
+    return Utf8JSONResponse(status_code=exc.status_code, content={"code": exc.code, "message": exc.message})
 
 
 @app.exception_handler(RequestValidationError)
 async def validation_error_handler(_, exc: RequestValidationError) -> JSONResponse:
-    return JSONResponse(
+    return Utf8JSONResponse(
         status_code=422,
         content={
             "code": "validation_error",
@@ -54,13 +59,13 @@ async def validation_error_handler(_, exc: RequestValidationError) -> JSONRespon
 @app.exception_handler(SQLAlchemyError)
 async def sqlalchemy_error_handler(_, exc: SQLAlchemyError) -> JSONResponse:
     logger.exception("Unhandled SQLAlchemy error", exc_info=exc)
-    return JSONResponse(status_code=500, content={"code": "database_error", "message": "数据库操作失败。"})
+    return Utf8JSONResponse(status_code=500, content={"code": "database_error", "message": "数据库操作失败。"})
 
 
 @app.exception_handler(Exception)
 async def unexpected_error_handler(_, exc: Exception) -> JSONResponse:
     logger.exception("Unhandled application error", exc_info=exc)
-    return JSONResponse(status_code=500, content={"code": "internal_error", "message": "服务器内部错误。"})
+    return Utf8JSONResponse(status_code=500, content={"code": "internal_error", "message": "服务器内部错误。"})
 
 
 @app.get(
