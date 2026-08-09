@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 
 from app.api.ai import get_deepseek_client
-from app.clients.deepseek import SYSTEM_PROMPT
+from app.clients.deepseek import BASELINE_PROMPT_VERSION, DEFAULT_PROMPT_VERSION, SYSTEM_PROMPT, SYSTEM_PROMPT_V1, SYSTEM_PROMPT_V2
 from app.main import app
 from tests.helpers import ai_json, mock_deepseek_client
 
@@ -40,9 +40,35 @@ def test_ai_success_is_only_a_proposal(client):
     body = response.json()
     assert body["ai_category"] == "网络问题"
     assert body["ai_priority"] == "P2"
+    assert body["ai_prompt_version"] == DEFAULT_PROMPT_VERSION
+    assert body["ai_status_label"] == "分析成功"
     assert body["review_status"] == "PENDING"
     assert body["final_category"] is None
     assert body["final_priority"] is None
+
+
+def test_prompt_versions_send_distinct_system_prompts():
+    captured = []
+
+    baseline_client = mock_deepseek_client(
+        ai_json(), captured.append, prompt_version=BASELINE_PROMPT_VERSION
+    )
+    optimized_client = mock_deepseek_client(
+        ai_json(), captured.append, prompt_version=DEFAULT_PROMPT_VERSION
+    )
+
+    baseline_client.analyze(title="网络问题", description="无法访问内网。")
+    optimized_client.analyze(title="网络问题", description="无法访问内网。")
+
+    baseline_payload = json.loads(captured[0].content)
+    optimized_payload = json.loads(captured[1].content)
+    assert baseline_client.prompt_version == BASELINE_PROMPT_VERSION
+    assert optimized_client.prompt_version == DEFAULT_PROMPT_VERSION
+    assert baseline_payload["messages"][0]["content"] == SYSTEM_PROMPT_V1
+    assert optimized_payload["messages"][0]["content"] == SYSTEM_PROMPT_V2
+    assert SYSTEM_PROMPT == SYSTEM_PROMPT_V2
+    assert "不得向上猜测" not in SYSTEM_PROMPT_V1
+    assert "不得向上猜测" in SYSTEM_PROMPT_V2
 
 
 def test_prompt_injection_content_is_data_and_not_applied(client):
@@ -87,6 +113,7 @@ def test_ai_invalid_response_fails_without_changing_final_fields(client):
     assert response.status_code == 503
     stored = client.get(f"/tickets/{ticket['id']}").json()
     assert stored["ai_status"] == "FAILED"
+    assert stored["ai_status_label"] == "分析失败"
     assert stored["ai_error_code"] == "AI_INVALID_RESPONSE"
     assert stored["final_category"] is None
     assert stored["final_priority"] is None

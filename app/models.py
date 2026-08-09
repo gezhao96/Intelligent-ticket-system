@@ -46,6 +46,16 @@ class AiStatus(StrEnum):
     SUCCEEDED = "SUCCEEDED"
     FAILED = "FAILED"
 
+    @property
+    def label(self) -> str:
+        """中文展示名；枚举值保持稳定，避免破坏已保存的 SQLite 数据。"""
+
+        return {
+            AiStatus.NOT_REQUESTED: "未分析",
+            AiStatus.SUCCEEDED: "分析成功",
+            AiStatus.FAILED: "分析失败",
+        }[self]
+
 
 class ReviewStatus(StrEnum):
     # AI 建议的人工审核状态。
@@ -123,6 +133,12 @@ class Ticket(Base):
     )
 
     events: Mapped[list[TicketEvent]] = relationship(back_populates="ticket", cascade="all, delete-orphan")
+
+    @property
+    def ai_status_label(self) -> str:
+        """供 API 与命令行演示使用的中文 AI 状态展示字段。"""
+
+        return self.ai_status.label
 
 
 class TicketEvent(Base):

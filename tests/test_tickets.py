@@ -28,6 +28,7 @@ def test_seed_is_idempotent_and_exposes_multiple_statuses(client):
         "已关闭",
         "已取消",
     }
+    assert {ticket["ai_status_label"] for ticket in tickets} == {"未分析"}
 
 
 def test_ticket_list_declares_utf8_json_for_windows_powershell(client):

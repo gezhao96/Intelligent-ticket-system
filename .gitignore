@@ -8,6 +8,7 @@ data/*.db
 data/*.db-shm
 data/*.db-wal
 data/test-runs/
+data/evaluation-results/
 任务1-任务书-智能工单协同系统.pdf
 coverage.xml
 htmlcov/

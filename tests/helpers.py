@@ -13,6 +13,7 @@ def mock_deepseek_client(
     content: str,
     capture: Callable[[httpx.Request], None] | None = None,
     status_code: int = 200,
+    prompt_version: str | None = None,
 ) -> DeepSeekClient:
     """Provide a transport-level DeepSeek simulation; production code remains unchanged."""
 
@@ -28,7 +29,10 @@ def mock_deepseek_client(
         deepseek_base_url="https://mock.deepseek.local",
         deepseek_model="test-model",
     )
-    return DeepSeekClient(settings, transport=httpx.MockTransport(handler))
+    kwargs = {"transport": httpx.MockTransport(handler)}
+    if prompt_version is not None:
+        kwargs["prompt_version"] = prompt_version
+    return DeepSeekClient(settings, **kwargs)
 
 
 def ai_json(**overrides: object) -> str:

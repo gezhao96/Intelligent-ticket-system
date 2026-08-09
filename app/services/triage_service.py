@@ -3,7 +3,7 @@ from __future__ import annotations
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
-from app.clients.deepseek import PROMPT_VERSION, AiProviderFailure, DeepSeekClient
+from app.clients.deepseek import AiProviderFailure, DeepSeekClient
 from app.core.config import settings
 from app.errors import ConflictError, DatabaseError
 from app.models import AiStatus, ReviewStatus, Ticket
@@ -27,7 +27,7 @@ def analyze_ticket(
         suggestion, raw_response = client.analyze(title=ticket.title, description=ticket.description)
     except AiProviderFailure as failure:
         # 外部服务失败时持久化失败状态，再让路由返回 503。
-        _persist_ai_failure(session, ticket, failure)
+        _persist_ai_failure(session, ticket, client, failure)
         return ticket, failure
 
     try:
@@ -39,7 +39,7 @@ def analyze_ticket(
         ticket.ai_injection_detected = suggestion.injection_detected
         ticket.ai_status = AiStatus.SUCCEEDED
         ticket.ai_model = client.model
-        ticket.ai_prompt_version = PROMPT_VERSION
+        ticket.ai_prompt_version = client.prompt_version
         ticket.ai_raw_response = raw_response
         ticket.ai_error_code = None
         ticket.review_status = ReviewStatus.PENDING
@@ -53,7 +53,7 @@ def analyze_ticket(
                 "category": suggestion.category.value,
                 "priority": suggestion.priority.value,
                 "injection_detected": suggestion.injection_detected,
-                "prompt_version": PROMPT_VERSION,
+                "prompt_version": client.prompt_version,
             },
         )
         session.commit()
@@ -64,7 +64,9 @@ def analyze_ticket(
         raise DatabaseError("保存 AI 建议失败，请稍后重试。") from exc
 
 
-def _persist_ai_failure(session: Session, ticket: Ticket, failure: AiProviderFailure) -> None:
+def _persist_ai_failure(
+    session: Session, ticket: Ticket, client: DeepSeekClient, failure: AiProviderFailure
+) -> None:
     """仅保存安全失败信息，并保持所有最终字段不变。"""
 
     try:
@@ -74,13 +76,19 @@ def _persist_ai_failure(session: Session, ticket: Ticket, failure: AiProviderFai
         ticket.ai_reason = None
         ticket.ai_injection_detected = None
         ticket.ai_status = AiStatus.FAILED
-        ticket.ai_model = settings.deepseek_model
-        ticket.ai_prompt_version = PROMPT_VERSION
+        ticket.ai_model = client.model
+        ticket.ai_prompt_version = client.prompt_version
         ticket.ai_raw_response = None
         ticket.ai_error_code = failure.code
         ticket.review_status = ReviewStatus.NOT_REVIEWED
         ticket.version += 1
-        add_event(session, ticket, "AI_FAILED", "deepseek", {"code": failure.code})
+        add_event(
+            session,
+            ticket,
+            "AI_FAILED",
+            "deepseek",
+            {"code": failure.code, "prompt_version": client.prompt_version},
+        )
         session.commit()
         session.refresh(ticket)
     except SQLAlchemyError as exc:

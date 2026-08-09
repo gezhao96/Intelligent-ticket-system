@@ -55,6 +55,7 @@ class TicketRead(BaseModel):
     ai_summary: str | None
     ai_reason: str | None
     ai_status: AiStatus
+    ai_status_label: str
     ai_injection_detected: bool | None
     ai_model: str | None
     ai_prompt_version: str | None
